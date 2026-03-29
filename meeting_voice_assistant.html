@@ -493,17 +493,18 @@ async function callClaude(userText) {
   const key = document.getElementById('apiKey').value.trim();
   if (!key) { showToast('請先輸入 API Key'); return null; }
 
-  const system = `你是會議記錄助理。根據使用者輸入，判斷日文指令並記錄內容。
+  const system = `你是會議記錄助理。根據使用者輸入，判斷指令並記錄內容。
 
-日文指令對照：
-- メモ / memo / 備註 → type: "memo"
-- 決定 / kettei / 決議 → type: "decision"  
-- タスク / tasuku / 待辦 / task → type: "task"
-- 重要 / juuyou / 重要 → type: "important"
-- 消して / 刪除 / delete → type: "delete"
-- まとめ / 整理 / summarize → type: "summarize"
+指令對照（日文/中文近似音/中文/英文 均可觸發）：
+- メモ / 咪摩 / 備註 / memo → type: "memo"
+- 決定 / 決議 / decision → type: "decision"
+- タスク / 他斯庫 / 待辦 / 追蹤 / task → type: "task"
+- 重要 / important → type: "important"
+- 消して / 消掉 / 刪除 / delete / 取消 → type: "delete"
+- まとめ / 整理 / 總結 / summarize → type: "summarize"
 
-輸入可能是日中英混合語音辨識結果，語音辨識可能有輕微誤差，請自行判斷最接近的指令。
+輸入可能是中英文混合語音辨識結果，語音辨識可能有輕微誤差，請自行判斷最接近的指令。
+指令通常在句子開頭，後面接著要記錄的內容。
 
 回覆格式（JSON only，不要其他文字）：
 {"type":"memo|decision|task|important|delete|summarize","content":"去除指令後的純內容文字，task類型請標注負責人與期限"}`;
@@ -579,8 +580,8 @@ function initRecognition() {
   recognition = new SpeechRecognition();
   recognition.continuous      = true;
   recognition.interimResults  = true;
-  // 多語言：日文 + 繁體中文 + 英文（Safari 用第一個語言，但仍可辨識混合）
-  recognition.lang            = 'ja-JP';
+  // 使用繁體中文辨識，Claude 負責判斷日文/中文/英文指令語義
+  recognition.lang            = 'zh-TW';
   recognition.maxAlternatives = 1;
 
   recognition.onresult = (e) => {
