@@ -577,10 +577,12 @@ function initRecognition() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) { showToast('此瀏覽器不支援語音辨識，請用 Safari'); return false; }
 
+  // 偵測是否為 iOS
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+
   recognition = new SpeechRecognition();
-  recognition.continuous      = true;
+  recognition.continuous      = isIOS ? false : true;
   recognition.interimResults  = true;
-  // 使用繁體中文辨識，Claude 負責判斷日文/中文/英文指令語義
   recognition.lang            = 'zh-TW';
   recognition.maxAlternatives = 1;
 
@@ -597,8 +599,7 @@ function initRecognition() {
     box.classList.add('active');
     box.textContent = display;
 
-    // 靜音偵測：有 final 結果後開始計時
-    if (finalTranscript) {
+    if (!isIOS && finalTranscript) {
       clearTimeout(silenceTimer);
       silenceTimer = setTimeout(() => {
         if (finalTranscript.trim()) processTranscript(finalTranscript.trim());
@@ -613,7 +614,17 @@ function initRecognition() {
   };
 
   recognition.onend = () => {
-    if (listening) recognition.start(); // 保持持續收音
+    if (!isIOS && listening) {
+      recognition.start();
+    } else if (isIOS && listening && finalTranscript.trim()) {
+      processTranscript(finalTranscript.trim());
+    } else if (isIOS) {
+      document.getElementById('micBtn').classList.remove('listening');
+      document.getElementById('micRing').classList.remove('listening');
+      document.getElementById('micLabel').innerHTML = '點麥克風說話<br>說完自動送出';
+      setStatus('ready', '待命');
+      listening = false;
+    }
   };
 
   return true;
