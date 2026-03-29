@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>🎙 會議語音助理</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #0a0e1a;
+    --surface:   #111827;
+    --surface2:  #1a2235;
+    --border:    #1e2d45;
+    --accent:    #3b82f6;
+    --accent2:   #06b6d4;
+    --green:     #10b981;
+    --red:       #ef4444;
+    --yellow:    #f59e0b;
+    --purple:    #8b5cf6;
+    --text:      #e2e8f0;
+    --text2:     #94a3b8;
+    --text3:     #475569;
+    --radius:    16px;
+    --radius-sm: 10px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Outfit', 'Noto Sans TC', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+  }
+
+  /* ── Background mesh ── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 60% 40% at 20% 10%, rgba(59,130,246,.12) 0%, transparent 60%),
+      radial-gradient(ellipse 40% 30% at 80% 80%, rgba(6,182,212,.08) 0%, transparent 60%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .app { position: relative; z-index: 1; display: flex; flex-direction: column; min-height: 100vh; }
+
+  /* ── Header ── */
+  header {
+    padding: 20px 20px 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .logo {
+    width: 40px; height: 40px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+  .header-text h1 { font-size: 18px; font-weight: 700; letter-spacing: -.3px; }
+  .header-text p  { font-size: 12px; color: var(--text2); font-weight: 300; }
+
+  .status-dot {
+    margin-left: auto;
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--text2);
+  }
+  .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--text3);
+    transition: background .3s;
+  }
+  .dot.ready   { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .dot.listen  { background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: pulse 1s infinite; }
+  .dot.process { background: var(--yellow); box-shadow: 0 0 8px var(--yellow); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  /* ── Setup panel ── */
+  .setup-panel {
+    margin: 16px 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+  }
+  .setup-panel h2 { font-size: 14px; font-weight: 600; color: var(--text2); margin-bottom: 12px; letter-spacing: .5px; text-transform: uppercase; }
+  .input-row { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+  .input-row label { font-size: 12px; color: var(--text2); }
+  .input-row input, .input-row textarea {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 14px;
+    padding: 10px 12px;
+    outline: none;
+    transition: border-color .2s;
+    width: 100%;
+  }
+  .input-row input:focus, .input-row textarea:focus { border-color: var(--accent); }
+  .input-row textarea { resize: none; height: 64px; }
+
+  .setup-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+  .btn-start {
+    width: 100%; margin-top: 12px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border: none; border-radius: var(--radius-sm);
+    color: #fff; font-family: inherit; font-size: 15px; font-weight: 600;
+    padding: 14px;
+    cursor: pointer;
+    transition: opacity .2s, transform .1s;
+  }
+  .btn-start:active { opacity: .85; transform: scale(.98); }
+
+  /* ── Session panel ── */
+  .session-panel { display: none; flex-direction: column; flex: 1; padding: 0 20px 20px; gap: 12px; }
+  .session-panel.active { display: flex; }
+
+  /* ── Mic area ── */
+  .mic-area {
+    display: flex; flex-direction: column; align-items: center;
+    padding: 24px 0 16px;
+    gap: 12px;
+  }
+
+  .mic-ring {
+    position: relative;
+    width: 100px; height: 100px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .mic-ring::before {
+    content: '';
+    position: absolute; inset: -8px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    transition: border-color .3s;
+  }
+  .mic-ring.listening::before {
+    border-color: var(--accent);
+    animation: spin-ring 2s linear infinite;
+  }
+  @keyframes spin-ring {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+
+  .mic-btn {
+    width: 100px; height: 100px; border-radius: 50%;
+    background: var(--surface);
+    border: 2px solid var(--border);
+    color: var(--text2);
+    font-size: 38px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: all .2s;
+    position: relative;
+    z-index: 1;
+    -webkit-user-select: none;
+  }
+  .mic-btn.listening {
+    background: linear-gradient(135deg, rgba(59,130,246,.2), rgba(6,182,212,.2));
+    border-color: var(--accent);
+    color: var(--accent);
+    box-shadow: 0 0 30px rgba(59,130,246,.3);
+  }
+  .mic-btn:active { transform: scale(.94); }
+
+  .mic-label { font-size: 13px; color: var(--text2); text-align: center; line-height: 1.4; }
+
+  /* ── Live transcript ── */
+  .transcript-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    min-height: 60px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--text2);
+    line-height: 1.6;
+    transition: border-color .3s;
+  }
+  .transcript-box.active { border-color: var(--accent); color: var(--text); }
+  .transcript-box .placeholder { color: var(--text3); font-style: italic; }
+
+  /* ── Command chips ── */
+  .cmd-row {
+    display: flex; gap: 6px; flex-wrap: wrap;
+  }
+  .cmd-chip {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 5px 12px;
+    font-size: 12px;
+    color: var(--text2);
+    cursor: pointer;
+    transition: all .15s;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .cmd-chip:active { background: var(--border); }
+  .cmd-chip .jp { color: var(--accent); font-weight: 600; }
+
+  /* ── Log ── */
+  .log-header {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 12px; color: var(--text2); text-transform: uppercase; letter-spacing: .5px;
+  }
+  .log-count {
+    background: var(--accent);
+    color: #fff;
+    border-radius: 20px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .log-list {
+    display: flex; flex-direction: column; gap: 6px;
+    max-height: 280px; overflow-y: auto;
+  }
+  .log-list::-webkit-scrollbar { width: 4px; }
+  .log-list::-webkit-scrollbar-track { background: transparent; }
+  .log-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  .log-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    display: flex; gap: 10px; align-items: flex-start;
+    animation: slideIn .2s ease;
+  }
+  @keyframes slideIn { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
+
+  .log-badge {
+    flex-shrink: 0;
+    font-size: 10px; font-weight: 700;
+    padding: 2px 7px; border-radius: 20px;
+    margin-top: 2px;
+  }
+  .badge-memo    { background: rgba(148,163,184,.15); color: var(--text2); }
+  .badge-decision{ background: rgba(16,185,129,.15);  color: var(--green); }
+  .badge-task    { background: rgba(59,130,246,.15);  color: var(--accent); }
+  .badge-important{background: rgba(239,68,68,.15);   color: var(--red); }
+
+  .log-num  { font-size: 11px; color: var(--text3); flex-shrink: 0; margin-top: 3px; }
+  .log-text { font-size: 13px; line-height: 1.5; flex: 1; }
+
+  .log-del { color: var(--text3); text-decoration: line-through; }
+
+  .empty-log { text-align: center; color: var(--text3); font-size: 13px; padding: 20px 0; }
+
+  /* ── Bottom actions ── */
+  .bottom-actions { display: flex; gap: 8px; margin-top: auto; }
+  .btn-action {
+    flex: 1; padding: 14px 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+    font-family: inherit; font-size: 13px; font-weight: 600;
+    cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    transition: all .15s;
+  }
+  .btn-action .icon { font-size: 20px; }
+  .btn-action:active { background: var(--surface2); transform: scale(.97); }
+  .btn-action.primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); border-color: transparent; }
+  .btn-action.danger  { border-color: rgba(239,68,68,.3); color: var(--red); }
+
+  /* ── Output modal ── */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,.7); backdrop-filter: blur(4px);
+    z-index: 100; align-items: flex-end;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius) var(--radius) 0 0;
+    padding: 20px;
+    width: 100%;
+    max-height: 80vh;
+    display: flex; flex-direction: column; gap: 12px;
+    animation: slideUp .25s ease;
+  }
+  @keyframes slideUp { from{transform:translateY(100%)} to{transform:translateY(0)} }
+  .modal h3 { font-size: 16px; font-weight: 700; }
+  .modal-content {
+    flex: 1; overflow-y: auto;
+    background: var(--bg);
+    border-radius: var(--radius-sm);
+    padding: 14px;
+    font-size: 13px; line-height: 1.8;
+    white-space: pre-wrap;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .modal-actions { display: flex; gap: 8px; }
+  .btn-copy, .btn-close {
+    flex: 1; padding: 12px;
+    border-radius: var(--radius-sm);
+    font-family: inherit; font-size: 14px; font-weight: 600;
+    cursor: pointer; border: none;
+  }
+  .btn-copy  { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; }
+  .btn-close { background: var(--surface2); color: var(--text2); }
+
+  /* ── Processing overlay ── */
+  .processing {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,.5); backdrop-filter: blur(2px);
+    z-index: 200; align-items: center; justify-content: center;
+    flex-direction: column; gap: 12px;
+  }
+  .processing.open { display: flex; }
+  .spinner {
+    width: 40px; height: 40px; border-radius: 50%;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to{transform:rotate(360deg)} }
+  .processing p { font-size: 14px; color: var(--text2); }
+
+  /* ── Toast ── */
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 20px; padding: 10px 20px;
+    font-size: 13px; color: var(--text);
+    z-index: 300; opacity: 0; transition: opacity .3s;
+    white-space: nowrap;
+  }
+  .toast.show { opacity: 1; }
+
+  .api-key-row { display: flex; gap: 8px; align-items: flex-end; }
+  .api-key-row input { flex: 1; }
+  .btn-toggle-key {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); color: var(--text2);
+    padding: 10px 12px; cursor: pointer; font-size: 14px; flex-shrink: 0;
+    height: 40px;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Header -->
+  <header>
+    <div class="logo">🎙</div>
+    <div class="header-text">
+      <h1>會議語音助理</h1>
+      <p>日文指令 × 中英文記錄</p>
+    </div>
+    <div class="status-dot">
+      <div class="dot" id="statusDot"></div>
+      <span id="statusText">未啟動</span>
+    </div>
+  </header>
+
+  <!-- Setup panel -->
+  <div class="setup-panel" id="setupPanel">
+    <h2>⚙ 會議資訊設定</h2>
+
+    <div class="input-row">
+      <label>Anthropic API Key</label>
+      <div class="api-key-row">
+        <input type="password" id="apiKey" placeholder="sk-ant-..." />
+        <button class="btn-toggle-key" onclick="toggleKey()">👁</button>
+      </div>
+    </div>
+
+    <div class="setup-grid">
+      <div class="input-row">
+        <label>會議主題</label>
+        <input type="text" id="meetingTopic" placeholder="例：採購審查會議" />
+      </div>
+      <div class="input-row">
+        <label>日期</label>
+        <input type="date" id="meetingDate" />
+      </div>
+    </div>
+
+    <div class="input-row">
+      <label>與會人員</label>
+      <textarea id="meetingAttendees" placeholder="例：王經理、李副總、陳工程師"></textarea>
+    </div>
+
+    <button class="btn-start" onclick="startSession()">🚀 開始會議記錄</button>
+  </div>
+
+  <!-- Session panel -->
+  <div class="session-panel" id="sessionPanel">
+
+    <!-- Mic -->
+    <div class="mic-area">
+      <div class="mic-ring" id="micRing">
+        <button class="mic-btn" id="micBtn" onclick="toggleListen()">🎤</button>
+      </div>
+      <div class="mic-label" id="micLabel">點麥克風開始說話<br>說完後自動辨識送出</div>
+    </div>
+
+    <!-- Live transcript -->
+    <div class="transcript-box" id="transcriptBox">
+      <span class="placeholder">語音內容將即時顯示於此…</span>
+    </div>
+
+    <!-- Command chips -->
+    <div class="cmd-row">
+      <div class="cmd-chip" onclick="injectCmd('メモ')"><span class="jp">メモ</span> 備註</div>
+      <div class="cmd-chip" onclick="injectCmd('決定')"><span class="jp">決定</span> 決議</div>
+      <div class="cmd-chip" onclick="injectCmd('タスク')"><span class="jp">タスク</span> 待辦</div>
+      <div class="cmd-chip" onclick="injectCmd('重要')"><span class="jp">重要</span> ⚠️</div>
+      <div class="cmd-chip" onclick="injectCmd('消して')"><span class="jp">消して</span> 刪除</div>
+    </div>
+
+    <!-- Log -->
+    <div class="log-header">
+      <span>📋 記錄清單</span>
+      <span class="log-count" id="logCount">0</span>
+    </div>
+    <div class="log-list" id="logList">
+      <div class="empty-log">尚無記錄，開口說話開始記錄</div>
+    </div>
+
+    <!-- Bottom actions -->
+    <div class="bottom-actions">
+      <button class="btn-action danger" onclick="undoLast()">
+        <span class="icon">↩️</span>
+        <span>消して</span>
+      </button>
+      <button class="btn-action primary" onclick="summarize()">
+        <span class="icon">📄</span>
+        <span>まとめ</span>
+      </button>
+      <button class="btn-action" onclick="endSession()">
+        <span class="icon">⏹</span>
+        <span>結束</span>
+      </button>
+    </div>
+
+  </div>
+</div>
+
+<!-- Output modal -->
+<div class="modal-overlay" id="outputModal">
+  <div class="modal">
+    <h3>📄 會議紀錄</h3>
+    <div class="modal-content" id="outputContent"></div>
+    <div class="modal-actions">
+      <button class="btn-copy" onclick="copyOutput()">複製全文</button>
+      <button class="btn-close" onclick="closeModal()">關閉</button>
+    </div>
+  </div>
+</div>
+
+<!-- Processing overlay -->
+<div class="processing" id="processing">
+  <div class="spinner"></div>
+  <p id="processingText">Claude 處理中…</p>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────
+let records   = [];   // { id, type, text, deleted }
+let nextId    = 1;
+let listening = false;
+let recognition = null;
+let silenceTimer = null;
+let meetingInfo  = {};
+let finalTranscript = '';
+
+// ── API ────────────────────────────────────────────────────────────
+const CLAUDE_URL = 'https://api.anthropic.com/v1/messages';
+
+async function callClaude(userText) {
+  const key = document.getElementById('apiKey').value.trim();
+  if (!key) { showToast('請先輸入 API Key'); return null; }
+
+  const system = `你是會議記錄助理。根據使用者輸入，判斷日文指令並記錄內容。
+
+日文指令對照：
+- メモ / memo / 備註 → type: "memo"
+- 決定 / kettei / 決議 → type: "decision"  
+- タスク / tasuku / 待辦 / task → type: "task"
+- 重要 / juuyou / 重要 → type: "important"
+- 消して / 刪除 / delete → type: "delete"
+- まとめ / 整理 / summarize → type: "summarize"
+
+輸入可能是日中英混合語音辨識結果，語音辨識可能有輕微誤差，請自行判斷最接近的指令。
+
+回覆格式（JSON only，不要其他文字）：
+{"type":"memo|decision|task|important|delete|summarize","content":"去除指令後的純內容文字，task類型請標注負責人與期限"}`;
+
+  try {
+    const res = await fetch(CLAUDE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 300,
+        system,
+        messages: [{ role: 'user', content: userText }]
+      })
+    });
+    const data = await res.json();
+    const raw = data.content?.[0]?.text || '';
+    const clean = raw.replace(/```json|```/g, '').trim();
+    return JSON.parse(clean);
+  } catch(e) {
+    showToast('API 錯誤：' + e.message);
+    return null;
+  }
+}
+
+async function callClaudeSummarize() {
+  const key = document.getElementById('apiKey').value.trim();
+  if (!key) { showToast('請先輸入 API Key'); return null; }
+
+  const active = records.filter(r => !r.deleted);
+  if (!active.length) { showToast('尚無記錄可整理'); return null; }
+
+  const recordText = active.map(r => `[${r.type}] ${r.text}`).join('\n');
+
+  const prompt = `請將以下會議記錄整理成正式會議紀錄，同時提供繁體中文版與英文版。
+
+會議資訊：
+主題：${meetingInfo.topic}
+日期：${meetingInfo.date}
+與會人員：${meetingInfo.attendees}
+
+記錄內容：
+${recordText}
+
+輸出格式：
+先輸出完整繁體中文版（含決議事項、待辦追蹤表格、備註），
+再用「---」分隔，
+輸出完整英文版（同結構）。`;
+
+  try {
+    const res = await fetch(CLAUDE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 2000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    const data = await res.json();
+    return data.content?.[0]?.text || '';
+  } catch(e) {
+    showToast('整理失敗：' + e.message);
+    return null;
+  }
+}
+
+// ── Speech Recognition ────────────────────────────────────────────
+function initRecognition() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) { showToast('此瀏覽器不支援語音辨識，請用 Safari'); return false; }
+
+  recognition = new SpeechRecognition();
+  recognition.continuous      = true;
+  recognition.interimResults  = true;
+  // 多語言：日文 + 繁體中文 + 英文（Safari 用第一個語言，但仍可辨識混合）
+  recognition.lang            = 'ja-JP';
+  recognition.maxAlternatives = 1;
+
+  recognition.onresult = (e) => {
+    let interim = '';
+    finalTranscript = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript;
+      if (e.results[i].isFinal) finalTranscript += t;
+      else interim += t;
+    }
+    const display = finalTranscript || interim;
+    const box = document.getElementById('transcriptBox');
+    box.classList.add('active');
+    box.textContent = display;
+
+    // 靜音偵測：有 final 結果後開始計時
+    if (finalTranscript) {
+      clearTimeout(silenceTimer);
+      silenceTimer = setTimeout(() => {
+        if (finalTranscript.trim()) processTranscript(finalTranscript.trim());
+      }, 1500);
+    }
+  };
+
+  recognition.onerror = (e) => {
+    if (e.error === 'no-speech') return;
+    showToast('語音錯誤：' + e.error);
+    stopListening();
+  };
+
+  recognition.onend = () => {
+    if (listening) recognition.start(); // 保持持續收音
+  };
+
+  return true;
+}
+
+function toggleListen() {
+  if (listening) stopListening();
+  else startListening();
+}
+
+function startListening() {
+  if (!recognition && !initRecognition()) return;
+  listening = true;
+  finalTranscript = '';
+  recognition.start();
+  document.getElementById('micBtn').classList.add('listening');
+  document.getElementById('micRing').classList.add('listening');
+  document.getElementById('micLabel').textContent = '聆聽中… 說完後自動送出';
+  setStatus('listen', '聆聽中');
+}
+
+function stopListening() {
+  listening = false;
+  clearTimeout(silenceTimer);
+  if (recognition) { try { recognition.stop(); } catch(e){} }
+  document.getElementById('micBtn').classList.remove('listening');
+  document.getElementById('micRing').classList.remove('listening');
+  document.getElementById('micLabel').textContent = '點麥克風開始說話\n說完後自動辨識送出';
+  setStatus('ready', '待命');
+}
+
+// ── Process transcript ────────────────────────────────────────────
+async function processTranscript(text) {
+  stopListening();
+  setStatus('process', '處理中');
+  showProcessing('Claude 判斷指令中…');
+
+  const result = await callClaude(text);
+  hideProcessing();
+
+  if (!result) { setStatus('ready','待命'); startListening(); return; }
+
+  if (result.type === 'delete') {
+    undoLast();
+  } else if (result.type === 'summarize') {
+    await summarize();
+  } else {
+    addRecord(result.type, result.content || text);
+  }
+
+  // 清空 transcript
+  const box = document.getElementById('transcriptBox');
+  box.classList.remove('active');
+  box.innerHTML = '<span class="placeholder">語音內容將即時顯示於此…</span>';
+  finalTranscript = '';
+
+  setStatus('ready','待命');
+  startListening();
+}
+
+// ── Inject command chip ───────────────────────────────────────────
+function injectCmd(cmd) {
+  const box = document.getElementById('transcriptBox');
+  box.classList.add('active');
+  box.textContent = cmd + ' …';
+  // Simulate sending just the command
+  processTranscript(cmd);
+}
+
+// ── Records ───────────────────────────────────────────────────────
+function addRecord(type, text) {
+  const rec = { id: nextId++, type, text, deleted: false };
+  records.push(rec);
+  renderLog();
+  showToast(`✅ #${rec.id} 已記錄`);
+}
+
+function undoLast() {
+  const active = records.filter(r => !r.deleted);
+  if (!active.length) { showToast('沒有可刪除的記錄'); return; }
+  const last = active[active.length - 1];
+  last.deleted = true;
+  renderLog();
+  showToast(`🗑 #${last.id} 已刪除`);
+}
+
+function renderLog() {
+  const list  = document.getElementById('logList');
+  const count = document.getElementById('logCount');
+  const active = records.filter(r => !r.deleted);
+  count.textContent = active.length;
+
+  if (!records.length) {
+    list.innerHTML = '<div class="empty-log">尚無記錄，開口說話開始記錄</div>';
+    return;
+  }
+
+  list.innerHTML = records.slice().reverse().map(r => {
+    const badgeClass = { memo:'badge-memo', decision:'badge-decision', task:'badge-task', important:'badge-important' }[r.type] || 'badge-memo';
+    const badgeLabel = { memo:'備註', decision:'決議', task:'待辦', important:'⚠️重要' }[r.type] || r.type;
+    return `<div class="log-item">
+      <span class="log-num">#${r.id}</span>
+      <span class="log-badge ${badgeClass}">${badgeLabel}</span>
+      <span class="log-text ${r.deleted ? 'log-del' : ''}">${r.text}</span>
+    </div>`;
+  }).join('');
+}
+
+// ── Summarize ─────────────────────────────────────────────────────
+async function summarize() {
+  stopListening();
+  showProcessing('整理會議紀錄中…');
+  const output = await callClaudeSummarize();
+  hideProcessing();
+  if (!output) return;
+  document.getElementById('outputContent').textContent = output;
+  document.getElementById('outputModal').classList.add('open');
+}
+
+function copyOutput() {
+  const text = document.getElementById('outputContent').textContent;
+  navigator.clipboard.writeText(text).then(() => showToast('已複製到剪貼板'));
+}
+
+function closeModal() {
+  document.getElementById('outputModal').classList.remove('open');
+}
+
+// ── Session ───────────────────────────────────────────────────────
+function startSession() {
+  const key       = document.getElementById('apiKey').value.trim();
+  const topic     = document.getElementById('meetingTopic').value.trim();
+  const date      = document.getElementById('meetingDate').value;
+  const attendees = document.getElementById('meetingAttendees').value.trim();
+
+  if (!key)   { showToast('請輸入 API Key'); return; }
+  if (!topic) { showToast('請輸入會議主題'); return; }
+
+  meetingInfo = { topic, date: date || new Date().toLocaleDateString('zh-TW'), attendees: attendees || '未記錄' };
+  records = []; nextId = 1;
+
+  document.getElementById('setupPanel').style.display   = 'none';
+  document.getElementById('sessionPanel').classList.add('active');
+
+  renderLog();
+  setStatus('ready', '待命');
+  showToast('會議開始！點麥克風說話');
+}
+
+function endSession() {
+  stopListening();
+  if (confirm('結束會議並返回設定？')) {
+    records = []; nextId = 1;
+    document.getElementById('setupPanel').style.display = '';
+    document.getElementById('sessionPanel').classList.remove('active');
+    setStatus('', '未啟動');
+  }
+}
+
+// ── UI helpers ────────────────────────────────────────────────────
+function setStatus(cls, text) {
+  const dot = document.getElementById('statusDot');
+  dot.className = 'dot ' + cls;
+  document.getElementById('statusText').textContent = text;
+}
+
+function showProcessing(text) {
+  document.getElementById('processingText').textContent = text;
+  document.getElementById('processing').classList.add('open');
+}
+function hideProcessing() {
+  document.getElementById('processing').classList.remove('open');
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+function toggleKey() {
+  const inp = document.getElementById('apiKey');
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+
+// ── Init ──────────────────────────────────────────────────────────
+document.getElementById('meetingDate').value = new Date().toISOString().split('T')[0];
+</script>
+</body>
+</html>
